@@ -4,10 +4,10 @@
  */
  
 /* Source File URL */
-$remote_file_url = 'https://demolink.co/backup-18-05-2021-exceptionalstaffing.ca.zip';
+$remote_file_url = 'https://demolink.co/backup-18-05-2021-backup.ca.zip';
  
 /* New file name and path for this file */
-$local_file = 'backup-18-05-2021-exceptionalstaffing.ca.zip';
+$local_file = 'backup-18-05-2021-backup.ca.zip';
  
 /* Copy the file from source url to server */
 $copy = copy( $remote_file_url, $local_file );
