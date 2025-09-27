@@ -1,0 +1,162 @@
+<?php
+// manager.php - Full Access PHP File Manager with Edit, Permissions, Super Admin Delete
+
+// SETTINGS
+$allow_delete = true;
+$allow_upload = true;
+$allow_edit   = true;
+$password     = "L8r#hZ3pW@2qV!xS^fT9jM*uB4nC1k"; 
+
+// PASSWORD PROTECTION
+session_start();
+if ($password) {
+    if (!isset($_SESSION['fm_logged_in'])) {
+        if (isset($_POST['password']) && $_POST['password'] === $password) {
+            $_SESSION['fm_logged_in'] = true;
+        } else {
+            echo '<form method="POST">
+                    <input type="password" name="password" placeholder="Password">
+                    <button type="submit">Login</button>
+                  </form>';
+            exit;
+        }
+    }
+}
+
+// PATH HANDLING
+$root_dir = __DIR__;
+$current_dir = isset($_GET['dir']) ? realpath($root_dir . '/' . $_GET['dir']) : $root_dir;
+if (strpos($current_dir, $root_dir) !== 0) {
+    $current_dir = $root_dir;
+}
+
+// DELETE FILE/FOLDER (Super Admin)
+if ($allow_delete && isset($_GET['delete'])) {
+    $target = $current_dir . '/' . $_GET['delete'];
+    if (is_dir($target)) {
+        deleteDirectory($target);
+    } elseif (is_file($target)) {
+        @chmod($target, 0777); // force permissions
+        unlink($target);
+    }
+    header("Location: ?dir=" . urlencode(str_replace($root_dir, '', $current_dir)));
+    exit;
+}
+
+// Helper: Delete directory recursively
+function deleteDirectory($dir) {
+    if (!file_exists($dir)) return;
+    if (is_file($dir)) {
+        @chmod($dir, 0777);
+        return unlink($dir);
+    }
+    foreach (scandir($dir) as $item) {
+        if ($item === '.' || $item === '..') continue;
+        deleteDirectory($dir . DIRECTORY_SEPARATOR . $item);
+    }
+    @chmod($dir, 0777);
+    return rmdir($dir);
+}
+
+// FILE UPLOAD
+if ($allow_upload && isset($_FILES['file'])) {
+    move_uploaded_file($_FILES['file']['tmp_name'], $current_dir . '/' . $_FILES['file']['name']);
+}
+
+// FILE EDIT
+if ($allow_edit && isset($_GET['edit'])) {
+    $file_to_edit = $current_dir . '/' . $_GET['edit'];
+
+    // Save changes
+    if (isset($_POST['file_content'])) {
+        file_put_contents($file_to_edit, $_POST['file_content']);
+        echo "<p style='color:green'>✅ File saved successfully.</p>";
+    }
+
+    echo "<h2>Editing: " . htmlspecialchars($_GET['edit']) . "</h2>";
+    echo "<form method='POST'>
+            <textarea name='file_content' style='width:100%;height:400px;'>"
+            . htmlspecialchars(file_get_contents($file_to_edit)) .
+            "</textarea><br>
+            <button type='submit'>Save</button>
+          </form>
+          <br><a href='?dir=" . urlencode(str_replace($root_dir, '', $current_dir)) . "'>⬅ Back</a>";
+    exit;
+}
+
+// PERMISSIONS FUNCTION
+function getPermissions($file) {
+    $perms = fileperms($file);
+    $info = '';
+    $info .= ($perms & 0x1000) ? 'p' : (($perms & 0x2000) ? 'c' :
+             (($perms & 0x4000) ? 'd' : (($perms & 0x6000) ? 'b' :
+             (($perms & 0x8000) ? '-' : (($perms & 0xA000) ? 'l' :
+             (($perms & 0xC000) ? 's' : 'u'))))));
+    // Owner
+    $info .= (($perms & 0x0100) ? 'r' : '-');
+    $info .= (($perms & 0x0080) ? 'w' : '-');
+    $info .= (($perms & 0x0040) ?
+                (($perms & 0x0800) ? 's' : 'x' ) :
+                (($perms & 0x0800) ? 'S' : '-'));
+    // Group
+    $info .= (($perms & 0x0020) ? 'r' : '-');
+    $info .= (($perms & 0x0010) ? 'w' : '-');
+    $info .= (($perms & 0x0008) ?
+                (($perms & 0x0400) ? 's' : 'x' ) :
+                (($perms & 0x0400) ? 'S' : '-'));
+    // World
+    $info .= (($perms & 0x0004) ? 'r' : '-');
+    $info .= (($perms & 0x0002) ? 'w' : '-');
+    $info .= (($perms & 0x0001) ?
+                (($perms & 0x0200) ? 't' : 'x' ) :
+                (($perms & 0x0200) ? 'T' : '-'));
+    return $info;
+}
+
+// HEADER
+echo "<h2>File Manager - " . htmlspecialchars(str_replace($root_dir, '', $current_dir)) . "</h2>";
+echo '<a href="?dir=' . urlencode(str_replace($root_dir, '', dirname($current_dir))) . '">⬅ Back</a><br><br>';
+
+// UPLOAD FORM
+if ($allow_upload) {
+    echo '<form method="POST" enctype="multipart/form-data">
+            <input type="file" name="file">
+            <button type="submit">Upload</button>
+          </form><br>';
+}
+
+// LIST FILES
+$files = scandir($current_dir);
+echo "<table border='1' cellpadding='5'>";
+echo "<tr><th>Name</th><th>Size</th><th>Permissions</th><th>Actions</th></tr>";
+foreach ($files as $file) {
+    if ($file === '.') continue;
+    $path = $current_dir . '/' . $file;
+    $perm = getPermissions($path);
+    if (is_dir($path)) {
+        echo "<tr>
+                <td><a href='?dir=" . urlencode(str_replace($root_dir, '', $path)) . "'>📁 " . htmlspecialchars($file) . "</a></td>
+                <td>--</td>
+                <td>$perm</td>
+                <td>";
+        if ($allow_delete) {
+            echo "<a href='?dir=" . urlencode(str_replace($root_dir, '', $current_dir)) . "&delete=" . urlencode($file) . "' onclick='return confirm(\"Delete folder?\")'>🗑 Delete</a>";
+        }
+        echo "</td></tr>";
+    } else {
+        echo "<tr>
+                <td><a href='" . htmlspecialchars(str_replace($root_dir, '', $path)) . "' target='_blank'>📄 " . htmlspecialchars($file) . "</a></td>
+                <td>" . filesize($path) . " bytes</td>
+                <td>$perm</td>
+                <td>";
+        if ($allow_edit) {
+            echo "<a href='?dir=" . urlencode(str_replace($root_dir, '', $current_dir)) . "&edit=" . urlencode($file) . "'>✏ Edit</a> ";
+        }
+        if ($allow_delete) {
+            echo "<a href='?dir=" . urlencode(str_replace($root_dir, '', $current_dir)) . "&delete=" . urlencode($file) . "' onclick='return confirm(\"Delete file?\")'>🗑 Delete</a>";
+        }
+        echo "</td></tr>";
+    }
+}
+echo "</table>";
+?>
